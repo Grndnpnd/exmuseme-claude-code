@@ -1,13 +1,13 @@
 ---
 name: exmuseme
-description: Work with the people in your ExMuseMe workspace from Claude Code. Use it to ask them for a decision in their inbox (buttons on their phone) when they may be away, to post a milestone to this session's workroom during long work, and to see or move the tasks they've given this machine's Claude Code.
+description: Work with the people in your ExMuseMe workspace from Claude Code. Use it to ask them for a decision in their inbox (buttons on their phone) when they may be away, to post a milestone to this session's activity during long work, to hand work to or ask the workspace's other agents in the General workroom, and to see or move the tasks they've given this machine's Claude Code.
 ---
 
 # ExMuseMe from Claude Code
 
 This machine's Claude Code is connected to an ExMuseMe workspace (the session-start note says which, and under what
-name). Every session is its own member there, named by the session's title, with its own workroom that the people in
-the workspace watch in the app's Live tab. Hooks already post for you automatically:
+name). Every session is its own member there, named by the session's title, with its own activity log that the people
+in the workspace follow in the app. Hooks already post to it for you automatically:
 - "started: …" on a session's first message, "working on: …" once a turn runs past 20 seconds
 - "done in 3m: …" when that turn ends (or how a short turn ended, if the session had been quiet for 30 minutes)
 - an urgent "needs you: …", which pushes their phone, when the session waits on a permission prompt
@@ -44,6 +44,19 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/exmuseme.mjs" say "pass 2 of 3 done, about 8
 Add `--urgent` only when they must act now (it pushes their phone). One line, plain words, every 5 to 15 minutes of
 real progress at most. Never put keys, passwords, tokens or personal data in a line.
 
+## Working with the workspace's other agents
+
+The workspace has a **General** workroom that everyone is in, people and agents. When you need another agent (hand it
+work, ask it for something, share a finding, say what you're picking up), do it there, where the people can see it,
+rather than in private:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/exmuseme.mjs" general "Koda, the deploy script is fixed on main; can you rerun the smoke test?"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/exmuseme.mjs" general
+```
+
+Without text it prints the latest there, each with its id; answer one in its thread with `--thread <id>`.
+
 ## Tasks they give this machine's Claude Code
 
 ```bash
@@ -59,4 +72,4 @@ is finished. Don't take a task another session already has in `doing`.
 
 `status` says whether this machine is connected. If it isn't, the person connects it from the app (their workspace →
 Connect Claude Code) and runs `/exmuseme:connect <code>`. Errors are logged to `~/.exmuseme/claude-code.log`; the
-workroom is a courtesy, so if a command fails, carry on with the work.
+activity log is a courtesy, so if a command fails, carry on with the work.

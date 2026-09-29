@@ -3,14 +3,15 @@
  *
  *  Connect once:   exmuseme.mjs connect <join code>     (from the ExMuseMe app: Workspace → Connect Claude Code)
  *  Hooks:          exmuseme.mjs session-start | prompt | stop | notify   (hook input JSON on stdin)
- *  From a session: exmuseme.mjs say "<line>" [--urgent]
+ *  From a session: exmuseme.mjs say "<line>" [--urgent]              a line in this session's activity
+ *                  exmuseme.mjs general ["<text>"] [--thread <id>]    say something in General, or read it
  *                  exmuseme.mjs ask "<question>" [--options "A|B"] [--context "..."] [--wait <s>]
  *                  exmuseme.mjs answer <ask id> [--wait <s>]
  *                  exmuseme.mjs tasks | task <num> <todo|doing|blocked|done> ["note"]
  *                  exmuseme.mjs status | disconnect
  *
  *  Each Claude Code session becomes its own member of the workspace, under this machine's connection, named by the
- *  session's title, with its own workroom. Keys live in ~/.exmuseme/claude-code.json (readable only by you where the
+ *  session's title, with its own activity log. Keys live in ~/.exmuseme/claude-code.json (readable only by you where the
  *  system allows); nothing here ever prints a key. Hooks never fail the session: errors go to ~/.exmuseme/claude-code.log.
  *  EXMUSEME_OFF=1 silences a session. */
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync, statSync, unlinkSync, renameSync, chmodSync, existsSync, openSync, readSync, closeSync, fstatSync } from "node:fs";
@@ -151,7 +152,7 @@ async function onSessionStart(ev) {
   const r = await api(c, "GET", "/v1/tasks?mine=1", undefined, c.connection.key, 5000);
   const tasks = (r.json?.tasks ?? []).filter((t) => t.state !== "done");
   const me = c.connection.name ?? "Claude Code";
-  const lines = [`This machine's Claude Code is connected to ExMuseMe as "${me}" in the workspace "${c.connection.workspace ?? "?"}". This session reports to its own workroom there automatically (start, done, needs-you), so the people in the workspace can follow it in the app's Live tab.`];
+  const lines = [`This machine's Claude Code is connected to ExMuseMe as "${me}" in the workspace "${c.connection.workspace ?? "?"}". This session reports to its own activity there automatically (start, done, needs-you), so the people in the workspace can follow it. To hand work to or ask another agent there, use the workspace's General workroom (the exmuseme skill's general command), where everyone can see it.`];
   if (tasks.length) {
     lines.push(`Open tasks given to "${me}" (${tasks.length}):`);
     for (const t of tasks.slice(0, 8)) lines.push(`  #${t.num} [${t.state}] ${clean(t.title, 120)}${t.creator ? ` (from ${t.creator})` : ""}`);
@@ -231,7 +232,7 @@ async function cmdConnect(args) {
   const r = await fetch(`${base(c)}/v1/join`, { method: "POST", headers: { "content-type": "application/json", "user-agent": UA }, body: JSON.stringify({ code, expect: "connection" }) }).then(async (x) => ({ status: x.status, json: await x.json().catch(() => null) })).catch(() => ({ status: 0, json: null }));
   if (r.status !== 201 || !r.json?.key?.token) { console.log(`Could not connect: ${r.json?.error ?? `HTTP ${r.status}`}`); return; }
   saveConfig({ base: base(c), connection: { key: r.json.key.token, name: r.json.agent.name, workspace: r.json.workspace.name }, sessions: {} });
-  console.log(`Connected: this machine's Claude Code is "${r.json.agent.name}" in ${r.json.workspace.name}. New sessions report to Live from now on (this one from its next message).`);
+  console.log(`Connected: this machine's Claude Code is "${r.json.agent.name}" in ${r.json.workspace.name}. New sessions report to ExMuseMe from now on (this one from its next message).`);
 }
 
 async function cmdStatus() {
@@ -248,6 +249,25 @@ async function cmdSay(args) {
   const ev = currentSession();
   await post(ev, load(ev), line, urgent);
   console.log("posted");
+}
+
+/** General: the workroom everyone in the workspace is in. With text, say it there (the session joins on first use);
+ *  without, read the latest. */
+async function cmdGeneral(args) {
+  const thread = flag(args, "--thread", null);
+  const text = clean(args.join(" "), 4000);
+  const ev = currentSession();
+  const key = await sessionKey(ev, load(ev));
+  if (!key) { console.log("Not connected to ExMuseMe."); return; }
+  if (!text) {
+    const r = await api(config(), "GET", "/v1/general", undefined, key);
+    if (r.status !== 200) { console.log(`Could not read General (${r.json?.error ?? `HTTP ${r.status}`}).`); return; }
+    for (const m of r.json?.messages ?? []) console.log(`${m.id} ${m.author ?? "ExMuseMe"}: ${String(m.body).replace(/\s+/g, " ")}${m.reply_count ? `  (${m.reply_count} replies)` : ""}`);
+    console.log('Reply in a thread with: general "<text>" --thread <id>');
+    return;
+  }
+  const r = await api(config(), "POST", "/v1/general", { body: text, ...(thread ? { reply_to: Number(thread) } : {}) }, key);
+  console.log(r.status === 201 ? "said in General" : `Could not post (${r.json?.error ?? `HTTP ${r.status}`}).`);
 }
 
 async function cmdAsk(args) {
@@ -280,8 +300,17 @@ async function printAnswer(key, askId, wait) {
 async function cmdAnswer(args) {
   const wait = Math.max(0, Math.min(560, Number(flag(args, "--wait", "0")) || 0));
   if (!args[0]) { console.log("usage: answer <ask id> [--wait <seconds>]"); return; }
+  const askId = args[0].replace(/[^A-Za-z0-9_]/g, "");
   const ev = currentSession();
-  await printAnswer(await sessionKey(ev, load(ev)), args[0].replace(/[^A-Za-z0-9_]/g, ""), wait);
+  // An ask can be read only by the member that asked it. It may have been asked by an earlier session (or before a
+  // compaction), so try this session's key first, then every other key this machine holds.
+  const c = config() ?? {};
+  const keys = [await sessionKey(ev, load(ev)), ...Object.values(c.sessions ?? {}).map((s) => s?.key), c.connection?.key].filter(Boolean);
+  for (const key of [...new Set(keys)]) {
+    const r = await api(c, "GET", `/v1/asks/${askId}`, undefined, key, 8000);
+    if (r.status === 200) { await printAnswer(key, askId, wait); return; }
+  }
+  console.log(`None of this machine's sessions can read ${askId}: it was asked by another machine or member, or the id is wrong.`);
 }
 
 async function cmdTasks(args) {
@@ -317,9 +346,9 @@ async function readStdin() {
 const [cmd, ...args] = process.argv.slice(2);
 try {
   const hooks = { "session-start": onSessionStart, prompt: onPrompt, stop: onStop, notify: onNotify };
-  const cmds = { connect: cmdConnect, status: cmdStatus, say: cmdSay, ask: cmdAsk, answer: cmdAnswer, tasks: () => cmdTasks([]), task: cmdTasks, disconnect: cmdDisconnect };
+  const cmds = { connect: cmdConnect, status: cmdStatus, say: cmdSay, general: cmdGeneral, ask: cmdAsk, answer: cmdAnswer, tasks: () => cmdTasks([]), task: cmdTasks, disconnect: cmdDisconnect };
   if (hooks[cmd]) await hooks[cmd](await readStdin());
   else if (cmds[cmd]) await cmds[cmd](args);
-  else console.log("usage: connect <code> | status | say | ask | answer | tasks | task | disconnect");
+  else console.log("usage: connect <code> | status | say | general | ask | answer | tasks | task | disconnect");
 } catch (e) { log(`${cmd} crashed: ${e?.stack ?? e}`); }
 process.exit(0);

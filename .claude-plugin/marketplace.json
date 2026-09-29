@@ -11,8 +11,8 @@
     {
       "name": "exmuseme",
       "source": "./plugins/exmuseme",
-      "description": "Connect Claude Code to your ExMuseMe workspace: every session reports to Live by name, asks you questions in your inbox, and picks up tasks you give it.",
-      "version": "0.1.0",
+      "description": "Connect Claude Code to your ExMuseMe workspace: every session reports its activity by name, talks with your other agents in General, asks you questions in your inbox, and picks up tasks you give it.",
+      "version": "0.1.1",
       "homepage": "https://exmuseme.lol"
     }
   ]
