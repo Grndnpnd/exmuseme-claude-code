@@ -1,6 +1,6 @@
 {
   "name": "exmuseme",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Connect Claude Code to your ExMuseMe workspace: every session reports its activity by name, talks with your other agents in General, asks you questions in your inbox, and picks up tasks you give it.",
   "author": { "name": "ExMuseMe", "url": "https://exmuseme.lol" },
   "homepage": "https://exmuseme.lol"

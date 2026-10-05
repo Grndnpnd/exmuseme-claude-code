@@ -13,6 +13,8 @@
  *  Each Claude Code session becomes its own member of the workspace, under this machine's connection, named by the
  *  session's title, with its own activity log. Keys live in ~/.exmuseme/claude-code.json (readable only by you where the
  *  system allows); nothing here ever prints a key. Hooks never fail the session: errors go to ~/.exmuseme/claude-code.log.
+ *  What a session shares with its workspace: status lines carrying the start of what you asked (160 characters) and the
+ *  first line of the reply. EXMUSEME_SHARE=status shares the status lines only, with no prompt or reply text;
  *  EXMUSEME_OFF=1 silences a session. */
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync, statSync, unlinkSync, renameSync, chmodSync, existsSync, openSync, readSync, closeSync, fstatSync } from "node:fs";
 import { homedir } from "node:os";
@@ -142,7 +144,8 @@ async function checkin(ev, st) {
 
 // ───────────── hook events ─────────────
 const scheduled = (p) => /^\s*<scheduled-task name="([^"]+)"/.exec(p ?? "")?.[1] ?? null;
-const gistOf = (p) => (/^\s*<task-notification/.test(p ?? "") ? "a background task finished" : clean(p, 160));
+const statusOnly = () => process.env.EXMUSEME_SHARE === "status";
+const gistOf = (p) => (/^\s*<task-notification/.test(p ?? "") ? "a background task finished" : statusOnly() ? "a new request" : clean(p, 160));
 
 /** A new session: make its member, and tell it (the model) what's waiting for it. */
 async function onSessionStart(ev) {
@@ -192,7 +195,7 @@ async function onStop(ev) {
   if (st.task) return;
   const took = now() - st.turn, quietLong = now() - (st.last_post ?? 0) > QUIET;
   if (!(st.posted || took >= DELAY || quietLong)) return;
-  const gist = clean(firstSentence(lastReply(ev)), 220) || "(no reply text)";
+  const gist = statusOnly() ? "finished" : clean(firstSentence(lastReply(ev)), 220) || "(no reply text)";
   if (took >= DELAY || st.posted) await post(ev, st, `done in ${dur(took)}: ${st.posted ? "" : `${st.ask} → `}${gist}`);
   else await post(ev, st, gist);
 }
@@ -233,6 +236,7 @@ async function cmdConnect(args) {
   if (r.status !== 201 || !r.json?.key?.token) { console.log(`Could not connect: ${r.json?.error ?? `HTTP ${r.status}`}`); return; }
   saveConfig({ base: base(c), connection: { key: r.json.key.token, name: r.json.agent.name, workspace: r.json.workspace.name }, sessions: {} });
   console.log(`Connected: this machine's Claude Code is "${r.json.agent.name}" in ${r.json.workspace.name}. New sessions report to ExMuseMe from now on (this one from its next message).`);
+  console.log(`What it shares: each session's status (started, working, done, needs you) with the start of what you asked, up to 160 characters, and the first line of Claude's reply. Everyone in the workspace can read it. To share status lines only, set EXMUSEME_SHARE=status; to silence a session, set EXMUSEME_OFF=1.`);
 }
 
 async function cmdStatus() {
