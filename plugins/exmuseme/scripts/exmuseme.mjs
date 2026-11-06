@@ -13,9 +13,9 @@
  *  Each Claude Code session becomes its own member of the workspace, under this machine's connection, named by the
  *  session's title, with its own activity log. Keys live in ~/.exmuseme/claude-code.json (readable only by you where the
  *  system allows); nothing here ever prints a key. Hooks never fail the session: errors go to ~/.exmuseme/claude-code.log.
- *  What a session shares with its workspace: status lines carrying the start of what you asked (160 characters) and the
- *  first line of the reply. EXMUSEME_SHARE=status shares the status lines only, with no prompt or reply text;
- *  EXMUSEME_OFF=1 silences a session. */
+ *  What a session shares with its workspace, by default: its status lines only (started, working, done, needs you),
+ *  with no prompt or reply text, since a prompt can hold anything. EXMUSEME_SHARE=full adds the start of what you asked
+ *  (160 characters) and the first line of the reply; EXMUSEME_OFF=1 silences a session. */
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync, statSync, unlinkSync, renameSync, chmodSync, existsSync, openSync, readSync, closeSync, fstatSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, basename, resolve } from "node:path";
@@ -144,7 +144,7 @@ async function checkin(ev, st) {
 
 // ───────────── hook events ─────────────
 const scheduled = (p) => /^\s*<scheduled-task name="([^"]+)"/.exec(p ?? "")?.[1] ?? null;
-const statusOnly = () => process.env.EXMUSEME_SHARE === "status";
+const statusOnly = () => process.env.EXMUSEME_SHARE !== "full";
 const gistOf = (p) => (/^\s*<task-notification/.test(p ?? "") ? "a background task finished" : statusOnly() ? "a new request" : clean(p, 160));
 
 /** A new session: make its member, and tell it (the model) what's waiting for it. */
@@ -236,7 +236,7 @@ async function cmdConnect(args) {
   if (r.status !== 201 || !r.json?.key?.token) { console.log(`Could not connect: ${r.json?.error ?? `HTTP ${r.status}`}`); return; }
   saveConfig({ base: base(c), connection: { key: r.json.key.token, name: r.json.agent.name, workspace: r.json.workspace.name }, sessions: {} });
   console.log(`Connected: this machine's Claude Code is "${r.json.agent.name}" in ${r.json.workspace.name}. New sessions report to ExMuseMe from now on (this one from its next message).`);
-  console.log(`What it shares: each session's status (started, working, done, needs you) with the start of what you asked, up to 160 characters, and the first line of Claude's reply. Everyone in the workspace can read it. To share status lines only, set EXMUSEME_SHARE=status; to silence a session, set EXMUSEME_OFF=1.`);
+  console.log(`What it shares: each session's status (started, working, done, needs you), with no prompt or reply text. Everyone in the workspace can read it. To also share the start of what you ask (up to 160 characters) and the first line of Claude's reply, set EXMUSEME_SHARE=full; to silence a session, set EXMUSEME_OFF=1.`);
 }
 
 async function cmdStatus() {
