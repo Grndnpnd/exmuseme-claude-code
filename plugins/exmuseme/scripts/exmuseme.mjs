@@ -28,7 +28,8 @@ const DELAY = Number(process.env.EXMUSEME_DELAY_MS ?? 20_000);  // a turn must r
 const QUIET = 30 * 60_000;     // a session quiet this long posts how a short turn ended
 const URGENT_GAP = 10 * 60_000;
 const CHECKIN_GAP = 5 * 60_000;
-const UA = "exmuseme-claude-code/0.1";
+const VERSION = (() => { try { return JSON.parse(readFileSync(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version; } catch { return "0"; } })();
+const UA = `exmuseme-claude-code/${VERSION}`;  // the app tells people when a machine's plugin needs updating
 
 const now = () => Date.now();
 const log = (m) => { try { mkdirSync(HOME, { recursive: true }); appendFileSync(LOG, `${new Date().toISOString()} ${m}\n`); } catch {} };

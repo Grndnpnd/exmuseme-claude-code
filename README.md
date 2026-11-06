@@ -32,4 +32,4 @@ connection in the app.
 
 Node 18 or newer (Claude Code already includes it). No other dependencies.
 
-Version 0.1.3.
+Version 0.1.4.
